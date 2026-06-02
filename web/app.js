@@ -1,0 +1,475 @@
+/**
+ * Crypto Platform · Phase 1 前端
+ *
+ * 设计:
+ *  - 无构建链。纯原生 JS + lightweight-charts CDN。
+ *  - 轮询 /api/snapshot (5s) 与 /api/candles (15s)。
+ *  - 收藏：仅 localStorage，不污染只读后端 API。
+ *  - 列表布局 + Tab(全部/收藏) + 排序，专为 40+ 个币设计。
+ */
+
+(() => {
+  "use strict";
+
+  const POLL_SNAPSHOT_MS = 5000;
+  const POLL_CANDLES_MS = 15000;
+  const CANDLE_LIMIT = 200;
+  const FAV_KEY = "crypto-platform.favorites.v1";
+  const TAB_KEY = "crypto-platform.tab.v1";
+  const SORT_KEY = "crypto-platform.sort.v1";
+  const TF_KEY = "crypto-platform.timeframe.v1";
+  const ALLOWED_TIMEFRAMES = ["15m", "1h", "4h", "1d"];
+  const DEFAULT_TIMEFRAME = "1d";
+
+  const el = {
+    metaExchange: document.getElementById("meta-exchange"),
+    metaTimeframe: document.getElementById("meta-timeframe"),
+    metaInterval: document.getElementById("meta-interval"),
+    status: document.getElementById("status"),
+    statusLabel: document.getElementById("status-label"),
+    chartTitle: document.getElementById("chart-title"),
+    chartSub: document.getElementById("chart-sub"),
+    chartStats: document.getElementById("chart-stats"),
+    chart: document.getElementById("chart"),
+    chartEmpty: document.getElementById("chart-empty"),
+    list: document.getElementById("list"),
+    listEmpty: document.getElementById("list-empty"),
+    countAll: document.getElementById("count-all"),
+    countFav: document.getElementById("count-fav"),
+    sort: document.getElementById("sort"),
+    footerSync: document.getElementById("footer-sync"),
+    footerRecords: document.getElementById("footer-records"),
+    footerError: document.getElementById("footer-error"),
+  };
+
+  const state = {
+    meta: null,
+    snapshot: null,
+    selectedSymbol: null,
+    favorites: loadFavorites(),
+    tab: localStorage.getItem(TAB_KEY) === "favorites" ? "favorites" : "all",
+    sort: localStorage.getItem(SORT_KEY) || "change_24h_desc",
+    timeframe: ALLOWED_TIMEFRAMES.includes(localStorage.getItem(TF_KEY))
+      ? localStorage.getItem(TF_KEY)
+      : DEFAULT_TIMEFRAME,
+  };
+
+  const MARKET_TYPE_LABEL = {
+    spot: "现货",
+    swap: "永续",
+    future: "合约",
+    option: "期权",
+    margin: "杠杆",
+  };
+
+  let chart = null;
+  let candleSeries = null;
+  let volumeSeries = null;
+
+  // -------------------- helpers --------------------
+
+  const fmtPrice = (n) => {
+    if (n == null || !Number.isFinite(n)) return "—";
+    const abs = Math.abs(n);
+    if (abs >= 1000) return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+    if (abs >= 1)    return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
+    return n.toLocaleString("en-US", { maximumFractionDigits: 6 });
+  };
+
+  const fmtPct = (n) => {
+    if (n == null || !Number.isFinite(n)) return "—";
+    const sign = n > 0 ? "+" : "";
+    return `${sign}${n.toFixed(2)}%`;
+  };
+
+  const fmtVolume = (n) => {
+    if (n == null || !Number.isFinite(n)) return "—";
+    if (n >= 1e9) return (n / 1e9).toFixed(2) + "B";
+    if (n >= 1e6) return (n / 1e6).toFixed(2) + "M";
+    if (n >= 1e3) return (n / 1e3).toFixed(2) + "K";
+    return n.toFixed(2);
+  };
+
+  const fmtTime = (ms) => {
+    if (!ms) return "—";
+    const d = new Date(ms);
+    const pad = (x) => String(x).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  };
+
+  const dirOf = (n) => (n == null ? "flat" : n > 0 ? "up" : n < 0 ? "down" : "flat");
+
+  async function getJSON(url) {
+    const r = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!r.ok) throw new Error(`${url} → HTTP ${r.status}`);
+    return r.json();
+  }
+
+  // -------------------- favorites (localStorage) --------------------
+
+  function loadFavorites() {
+    try {
+      const raw = localStorage.getItem(FAV_KEY);
+      if (!raw) return new Set();
+      const arr = JSON.parse(raw);
+      return new Set(Array.isArray(arr) ? arr : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  function saveFavorites() {
+    localStorage.setItem(FAV_KEY, JSON.stringify([...state.favorites]));
+  }
+
+  function toggleFavorite(symbol) {
+    if (state.favorites.has(symbol)) state.favorites.delete(symbol);
+    else state.favorites.add(symbol);
+    saveFavorites();
+    renderList();
+    renderTabCounts();
+  }
+
+  // -------------------- chart --------------------
+
+  function ensureChart() {
+    if (chart) return;
+    chart = LightweightCharts.createChart(el.chart, {
+      autoSize: true,
+      layout: {
+        background: { type: "solid", color: "rgba(0,0,0,0)" },
+        textColor: "#a8b0c0",
+        fontFamily: "ui-monospace, JetBrains Mono, SF Mono, Menlo, Consolas, monospace",
+      },
+      grid: {
+        vertLines: { color: "rgba(255,255,255,0.04)" },
+        horzLines: { color: "rgba(255,255,255,0.05)" },
+      },
+      crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+      rightPriceScale: { borderColor: "rgba(255,255,255,0.08)" },
+      timeScale: {
+        borderColor: "rgba(255,255,255,0.08)",
+        timeVisible: true,
+        secondsVisible: false,
+      },
+    });
+
+    candleSeries = chart.addCandlestickSeries({
+      upColor: "#34d399",
+      downColor: "#f43f5e",
+      wickUpColor: "#34d399",
+      wickDownColor: "#f43f5e",
+      borderVisible: false,
+    });
+
+    volumeSeries = chart.addHistogramSeries({
+      priceFormat: { type: "volume" },
+      priceScaleId: "",
+      color: "rgba(120,140,180,0.35)",
+    });
+    volumeSeries.priceScale().applyOptions({
+      scaleMargins: { top: 0.85, bottom: 0 },
+    });
+  }
+
+  function renderCandles(candles) {
+    ensureChart();
+    if (!candles || candles.length === 0) {
+      el.chartEmpty.classList.remove("hidden");
+      candleSeries.setData([]);
+      volumeSeries.setData([]);
+      return;
+    }
+    el.chartEmpty.classList.add("hidden");
+
+    candleSeries.setData(
+      candles.map((c) => ({
+        time: c.time, open: c.open, high: c.high, low: c.low, close: c.close,
+      })),
+    );
+
+    volumeSeries.setData(
+      candles.map((c) => ({
+        time: c.time,
+        value: c.volume,
+        color: c.close >= c.open ? "rgba(52,211,153,0.35)" : "rgba(244,63,94,0.35)",
+      })),
+    );
+
+    chart.timeScale().fitContent();
+  }
+
+  // -------------------- list --------------------
+
+  function visibleItems() {
+    const items = state.snapshot?.items || [];
+    const filtered = state.tab === "favorites"
+      ? items.filter((i) => state.favorites.has(i.symbol))
+      : items.slice();
+
+    const cmpNum = (a, b) => {
+      if (a == null && b == null) return 0;
+      if (a == null) return 1;
+      if (b == null) return -1;
+      return a - b;
+    };
+
+    const SORTERS = {
+      change_24h_desc: (a, b) => cmpNum(b.change_24h_pct, a.change_24h_pct),
+      change_24h_asc:  (a, b) => cmpNum(a.change_24h_pct, b.change_24h_pct),
+      change_7d_desc:  (a, b) => cmpNum(b.change_7d_pct,  a.change_7d_pct),
+      change_7d_asc:   (a, b) => cmpNum(a.change_7d_pct,  b.change_7d_pct),
+      change_30d_desc: (a, b) => cmpNum(b.change_30d_pct, a.change_30d_pct),
+      change_30d_asc:  (a, b) => cmpNum(a.change_30d_pct, b.change_30d_pct),
+      change_90d_desc: (a, b) => cmpNum(b.change_90d_pct, a.change_90d_pct),
+      change_90d_asc:  (a, b) => cmpNum(a.change_90d_pct, b.change_90d_pct),
+      volume_desc:     (a, b) => cmpNum(b.volume_24h,     a.volume_24h),
+      price_desc:      (a, b) => cmpNum(b.price,          a.price),
+      price_asc:       (a, b) => cmpNum(a.price,          b.price),
+      symbol_asc:      (a, b) => a.symbol.localeCompare(b.symbol),
+    };
+    const sorter = SORTERS[state.sort];
+    if (sorter) filtered.sort(sorter);
+    return filtered;
+  }
+
+  function renderList() {
+    const items = visibleItems();
+    el.list.innerHTML = "";
+    el.listEmpty.hidden = items.length > 0;
+    if (items.length === 0) {
+      el.listEmpty.textContent =
+        state.tab === "favorites" ? "还没有收藏。点列表中星标添加。" : "暂无数据。";
+      return;
+    }
+
+    const frag = document.createDocumentFragment();
+    items.forEach((item) => {
+      const row = document.createElement("div");
+      row.className = "row";
+      row.dataset.symbol = item.symbol;
+      if (item.symbol === state.selectedSymbol) row.classList.add("active");
+
+      const isFav = state.favorites.has(item.symbol);
+      const marketLabel = MARKET_TYPE_LABEL[item.market_type] || item.market_type || "现货";
+      const tagChips = [
+        `<span class="tag-chip market-type">${marketLabel}</span>`,
+        ...(item.tags || []).map((t) => `<span class="tag-chip" data-tag="${t}">${t}</span>`),
+      ].join("");
+
+      row.innerHTML = `
+        <span class="col col-fav">
+          <button class="fav-btn ${isFav ? "is-fav" : ""}" aria-label="收藏">${isFav ? "★" : "☆"}</button>
+        </span>
+        <span class="col col-symbol">
+          <span class="symbol-name">${item.symbol}</span>
+          ${tagChips}
+        </span>
+        <span class="col col-price">${fmtPrice(item.price)}</span>
+        ${pctCell(item.change_24h_pct)}
+        ${pctCell(item.change_7d_pct)}
+        ${pctCell(item.change_30d_pct)}
+        ${pctCell(item.change_90d_pct)}
+        <span class="col col-volume">${fmtVolume(item.volume_24h)}</span>
+      `;
+
+      row.querySelector(".fav-btn").addEventListener("click", (e) => {
+        e.stopPropagation();
+        toggleFavorite(item.symbol);
+      });
+      row.addEventListener("click", () => selectSymbol(item.symbol));
+
+      frag.appendChild(row);
+    });
+    el.list.appendChild(frag);
+  }
+
+  function pctCell(pct) {
+    if (pct == null || !Number.isFinite(pct)) {
+      return `<span class="col col-change"><span class="change-pill" data-dir="na">—</span></span>`;
+    }
+    return `<span class="col col-change"><span class="change-pill" data-dir="${dirOf(pct)}">${fmtPct(pct)}</span></span>`;
+  }
+
+  function renderTabCounts() {
+    const total = state.snapshot?.items.length ?? 0;
+    el.countAll.textContent = total;
+    el.countFav.textContent = state.favorites.size;
+  }
+
+  function setTab(tab) {
+    if (tab !== "all" && tab !== "favorites") return;
+    state.tab = tab;
+    localStorage.setItem(TAB_KEY, tab);
+    document.querySelectorAll(".tab").forEach((t) => {
+      t.setAttribute("aria-selected", String(t.dataset.tab === tab));
+    });
+    renderList();
+  }
+
+  // -------------------- chart header --------------------
+
+  function renderMeta(meta) {
+    el.metaExchange.textContent = meta.exchange.toUpperCase();
+    el.metaTimeframe.textContent = meta.kline_timeframe;
+    el.metaInterval.textContent = meta.sync_interval_seconds;
+  }
+
+  function setStatus(running, error) {
+    if (error) {
+      el.status.dataset.state = "error";
+      el.statusLabel.textContent = "同步异常";
+    } else if (running) {
+      el.status.dataset.state = "ok";
+      el.statusLabel.textContent = "实时同步中";
+    } else {
+      el.status.dataset.state = "idle";
+      el.statusLabel.textContent = "已停止";
+    }
+  }
+
+  function renderChartHeader(item) {
+    if (!item) {
+      el.chartTitle.textContent = "—";
+      el.chartSub.textContent = "—";
+      el.chartStats.innerHTML = "";
+      return;
+    }
+    el.chartTitle.textContent = item.symbol;
+    el.chartSub.textContent =
+      `${state.meta.exchange.toUpperCase()} · ${state.timeframe} K 线 · 更新于 ${fmtTime(item.price_timestamp_ms)}`;
+
+    const stats = [
+      { label: "最新价",  value: fmtPrice(item.price) },
+      { label: "今日",   value: fmtPct(item.change_24h_pct), klass: dirOf(item.change_24h_pct) },
+      { label: "7 天",   value: fmtPct(item.change_7d_pct),  klass: dirOf(item.change_7d_pct) },
+      { label: "30 天",  value: fmtPct(item.change_30d_pct), klass: dirOf(item.change_30d_pct) },
+      { label: "90 天",  value: fmtPct(item.change_90d_pct), klass: dirOf(item.change_90d_pct) },
+      { label: "24h 高", value: fmtPrice(item.high_24h) },
+      { label: "24h 低", value: fmtPrice(item.low_24h) },
+      { label: "24h 量", value: fmtVolume(item.volume_24h) },
+    ];
+    el.chartStats.innerHTML = stats
+      .map((s) => `
+        <div class="stat">
+          <span class="stat-label">${s.label}</span>
+          <span class="stat-value ${s.klass || ""}">${s.value}</span>
+        </div>`)
+      .join("");
+  }
+
+  function renderFooter(snapshot) {
+    el.footerSync.textContent = `上次同步: ${fmtTime(snapshot.last_sync_ms)}`;
+    const totalKL = snapshot.items.reduce((sum, i) => sum + i.kline_count, 0);
+    const totalP = snapshot.items.reduce((sum, i) => sum + i.price_count, 0);
+    el.footerRecords.textContent = `价格 ${totalP} 条 · K 线 ${totalKL} 条`;
+    el.footerError.textContent = snapshot.last_error ? "最近错误: " + snapshot.last_error : "";
+  }
+
+  function selectSymbol(symbol) {
+    if (state.selectedSymbol === symbol) return;
+    state.selectedSymbol = symbol;
+    const item = state.snapshot?.items.find((i) => i.symbol === symbol);
+    if (item) renderChartHeader(item);
+    document.querySelectorAll(".row").forEach((r) => {
+      r.classList.toggle("active", r.dataset.symbol === symbol);
+    });
+    void refreshCandles();
+  }
+
+  // -------------------- polling --------------------
+
+  async function refreshSnapshot() {
+    try {
+      const snap = await getJSON("/api/snapshot");
+      state.snapshot = snap;
+      if (!state.selectedSymbol && snap.items.length > 0) {
+        state.selectedSymbol = snap.items[0].symbol;
+      }
+      setStatus(snap.running, snap.last_error);
+      renderTabCounts();
+      renderList();
+      const cur = snap.items.find((i) => i.symbol === state.selectedSymbol);
+      renderChartHeader(cur);
+      renderFooter(snap);
+    } catch (err) {
+      console.warn("snapshot error", err);
+      setStatus(false, err.message);
+    }
+  }
+
+  async function refreshCandles() {
+    if (!state.selectedSymbol) return;
+    try {
+      const params = new URLSearchParams({
+        symbol: state.selectedSymbol,
+        timeframe: state.timeframe,
+        limit: String(CANDLE_LIMIT),
+      });
+      const candles = await getJSON(`/api/candles?${params.toString()}`);
+      renderCandles(candles);
+    } catch (err) {
+      console.warn("candles error", err);
+    }
+  }
+
+  function setTimeframe(tf) {
+    if (!ALLOWED_TIMEFRAMES.includes(tf)) return;
+    if (state.timeframe === tf) return;
+    state.timeframe = tf;
+    localStorage.setItem(TF_KEY, tf);
+    document.querySelectorAll(".tf-btn").forEach((b) => {
+      b.setAttribute("aria-selected", String(b.dataset.tf === tf));
+    });
+    // 切换时图表先回到 loading 态，再用新数据填充
+    el.chartEmpty.classList.remove("hidden");
+    el.chartEmpty.textContent = `加载 ${tf} K 线…`;
+    void refreshCandles();
+
+    const cur = state.snapshot?.items.find((i) => i.symbol === state.selectedSymbol);
+    if (cur) renderChartHeader(cur);
+  }
+
+  // -------------------- bootstrap --------------------
+
+  function bindControls() {
+    document.querySelectorAll(".tab").forEach((t) => {
+      t.addEventListener("click", () => setTab(t.dataset.tab));
+    });
+    setTab(state.tab);
+
+    el.sort.value = state.sort;
+    el.sort.addEventListener("change", () => {
+      state.sort = el.sort.value;
+      localStorage.setItem(SORT_KEY, state.sort);
+      renderList();
+    });
+
+    document.querySelectorAll(".tf-btn").forEach((b) => {
+      b.setAttribute("aria-selected", String(b.dataset.tf === state.timeframe));
+      b.addEventListener("click", () => setTimeframe(b.dataset.tf));
+    });
+  }
+
+  async function bootstrap() {
+    bindControls();
+
+    try {
+      state.meta = await getJSON("/api/meta");
+      renderMeta(state.meta);
+    } catch (err) {
+      el.statusLabel.textContent = "无法连接后端";
+      el.status.dataset.state = "error";
+      console.error(err);
+      return;
+    }
+
+    await refreshSnapshot();
+    await refreshCandles();
+
+    setInterval(refreshSnapshot, POLL_SNAPSHOT_MS);
+    setInterval(refreshCandles, POLL_CANDLES_MS);
+  }
+
+  document.addEventListener("DOMContentLoaded", bootstrap);
+})();

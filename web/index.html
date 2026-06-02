@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Crypto Platform · Phase 1</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">◆</span>
+      <div>
+        <h1>Crypto Platform</h1>
+        <p class="tagline">Phase 1 · <span class="badge-readonly">只读</span></p>
+      </div>
+    </div>
+    <div class="meta">
+      <span class="meta-item" id="meta-exchange">—</span>
+      <span class="meta-sep">·</span>
+      <span class="meta-item" id="meta-timeframe">—</span>
+      <span class="meta-sep">·</span>
+      <span class="meta-item">同步 <span id="meta-interval">—</span>s</span>
+    </div>
+    <div class="status" id="status">
+      <span class="dot"></span>
+      <span class="status-label" id="status-label">连接中…</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="chart-section">
+      <div class="chart-header">
+        <div class="chart-title-wrap">
+          <h2 id="chart-title">—</h2>
+          <p class="chart-sub" id="chart-sub">—</p>
+        </div>
+        <div class="tf-group" id="tf-group" role="tablist" aria-label="K 线周期">
+          <button class="tf-btn" data-tf="15m">15m</button>
+          <button class="tf-btn" data-tf="1h">1h</button>
+          <button class="tf-btn" data-tf="4h">4h</button>
+          <button class="tf-btn" data-tf="1d">1d</button>
+        </div>
+        <div class="chart-stats" id="chart-stats"></div>
+      </div>
+      <div class="chart-wrap">
+        <div id="chart"></div>
+        <div class="chart-empty" id="chart-empty">暂无 K 线数据，请稍候…</div>
+      </div>
+    </section>
+
+    <section class="list-section">
+      <div class="list-controls">
+        <div class="tabs" role="tablist">
+          <button class="tab" data-tab="all" aria-selected="true">
+            全部 <span class="tab-badge" id="count-all">0</span>
+          </button>
+          <button class="tab" data-tab="favorites" aria-selected="false">
+            ★ 收藏 <span class="tab-badge" id="count-fav">0</span>
+          </button>
+        </div>
+        <div class="sort-controls">
+          <label for="sort">排序</label>
+          <select id="sort">
+            <optgroup label="今日 (24h)">
+              <option value="change_24h_desc">今日涨幅 ↓</option>
+              <option value="change_24h_asc">今日跌幅 ↓</option>
+            </optgroup>
+            <optgroup label="7 天">
+              <option value="change_7d_desc">7 天涨幅 ↓</option>
+              <option value="change_7d_asc">7 天跌幅 ↓</option>
+            </optgroup>
+            <optgroup label="30 天">
+              <option value="change_30d_desc">30 天涨幅 ↓</option>
+              <option value="change_30d_asc">30 天跌幅 ↓</option>
+            </optgroup>
+            <optgroup label="90 天">
+              <option value="change_90d_desc">90 天涨幅 ↓</option>
+              <option value="change_90d_asc">90 天跌幅 ↓</option>
+            </optgroup>
+            <optgroup label="其它">
+              <option value="volume_desc">24h 成交量 ↓</option>
+              <option value="price_desc">最新价 ↓</option>
+              <option value="price_asc">最新价 ↑</option>
+              <option value="symbol_asc">符号 A→Z</option>
+              <option value="default">默认顺序</option>
+            </optgroup>
+          </select>
+        </div>
+      </div>
+
+      <div class="list-head">
+        <span class="col col-fav"></span>
+        <span class="col col-symbol">交易对</span>
+        <span class="col col-price">最新价</span>
+        <span class="col col-change">今日</span>
+        <span class="col col-change">7 天</span>
+        <span class="col col-change">30 天</span>
+        <span class="col col-change">90 天</span>
+        <span class="col col-volume">24h 量</span>
+      </div>
+      <div class="list" id="list"></div>
+      <p class="list-empty" id="list-empty" hidden>暂无数据。</p>
+    </section>
+
+    <section class="footer">
+      <span id="footer-sync">—</span>
+      <span class="meta-sep">·</span>
+      <span id="footer-records">—</span>
+      <span class="meta-sep">·</span>
+      <span class="footer-warn" id="footer-error"></span>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
