@@ -65,6 +65,8 @@
   let chart = null;
   let candleSeries = null;
   let volumeSeries = null;
+  // 是否已经渲染过至少一次有数据的图。决定下一次 setData 后是否 fitContent。
+  let chartHasInitialFit = false;
 
   // -------------------- helpers --------------------
 
@@ -172,12 +174,13 @@
     });
   }
 
-  function renderCandles(candles) {
+  function renderCandles(candles, { fit = false } = {}) {
     ensureChart();
     if (!candles || candles.length === 0) {
       el.chartEmpty.classList.remove("hidden");
       candleSeries.setData([]);
       volumeSeries.setData([]);
+      chartHasInitialFit = false;
       return;
     }
     el.chartEmpty.classList.add("hidden");
@@ -196,7 +199,22 @@
       })),
     );
 
+    // 只在第一次有数据 / 显式 fit（切币 / 切周期 / 点重置）时才回到默认视图。
+    // 自动轮询不 fit -> 保留用户的缩放和平移位置。
+    if (fit || !chartHasInitialFit) {
+      chart.timeScale().fitContent();
+      chartHasInitialFit = true;
+    }
+  }
+
+  function resetChartView() {
+    if (!chart) return;
     chart.timeScale().fitContent();
+  }
+
+  function scrollChartToLatest() {
+    if (!chart) return;
+    chart.timeScale().scrollToRealTime();
   }
 
   // -------------------- list --------------------
@@ -374,7 +392,8 @@
     document.querySelectorAll(".row").forEach((r) => {
       r.classList.toggle("active", r.dataset.symbol === symbol);
     });
-    void refreshCandles();
+    chartHasInitialFit = false;        // 换币切到新数据，下一次 setData 重新 fit
+    void refreshCandles({ fit: true });
   }
 
   // -------------------- polling --------------------
@@ -398,7 +417,7 @@
     }
   }
 
-  async function refreshCandles() {
+  async function refreshCandles({ fit = false } = {}) {
     if (!state.selectedSymbol) return;
     try {
       const params = new URLSearchParams({
@@ -407,7 +426,7 @@
         limit: String(CANDLE_LIMIT),
       });
       const candles = await getJSON(`/api/candles?${params.toString()}`);
-      renderCandles(candles);
+      renderCandles(candles, { fit });
     } catch (err) {
       console.warn("candles error", err);
     }
@@ -424,7 +443,8 @@
     // 切换时图表先回到 loading 态，再用新数据填充
     el.chartEmpty.classList.remove("hidden");
     el.chartEmpty.textContent = `加载 ${tf} K 线…`;
-    void refreshCandles();
+    chartHasInitialFit = false;        // 强制下一次 setData fit 一下
+    void refreshCandles({ fit: true });
 
     const cur = state.snapshot?.items.find((i) => i.symbol === state.selectedSymbol);
     if (cur) renderChartHeader(cur);
@@ -449,6 +469,12 @@
       b.setAttribute("aria-selected", String(b.dataset.tf === state.timeframe));
       b.addEventListener("click", () => setTimeframe(b.dataset.tf));
     });
+
+    const resetBtn = document.getElementById("chart-reset");
+    if (resetBtn) {
+      resetBtn.addEventListener("click", resetChartView);
+      resetBtn.addEventListener("dblclick", scrollChartToLatest);
+    }
   }
 
   async function bootstrap() {
@@ -465,10 +491,11 @@
     }
 
     await refreshSnapshot();
-    await refreshCandles();
+    await refreshCandles({ fit: true });
 
-    setInterval(refreshSnapshot, POLL_SNAPSHOT_MS);
-    setInterval(refreshCandles, POLL_CANDLES_MS);
+    // 用箭头函数包一层，避免 setInterval 把 tick id 当成 opts 传进去。
+    setInterval(() => refreshSnapshot(), POLL_SNAPSHOT_MS);
+    setInterval(() => refreshCandles(), POLL_CANDLES_MS);
   }
 
   document.addEventListener("DOMContentLoaded", bootstrap);

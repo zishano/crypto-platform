@@ -139,6 +139,13 @@ main {
 .chart-title-wrap { min-width: 0; }
 .chart-header h2 { margin: 0; font-size: 22px; letter-spacing: -0.2px; }
 
+.chart-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: center;
+}
+
 .tf-group {
   display: inline-flex;
   gap: 2px;
@@ -146,8 +153,30 @@ main {
   background: var(--bg-elev-2);
   border: 1px solid var(--border);
   border-radius: 8px;
-  align-self: center;
 }
+
+.reset-btn {
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  color: var(--text-mute);
+  width: 34px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 16px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--duration) var(--ease);
+  font-family: inherit;
+  padding: 0;
+}
+.reset-btn:hover {
+  color: var(--accent);
+  border-color: var(--border-strong);
+  background: oklch(27% 0.03 260);
+}
+.reset-btn:active { transform: scale(0.92); }
 .tf-btn {
   background: transparent;
   border: none;

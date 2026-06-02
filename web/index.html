@@ -36,11 +36,14 @@
           <h2 id="chart-title">—</h2>
           <p class="chart-sub" id="chart-sub">—</p>
         </div>
-        <div class="tf-group" id="tf-group" role="tablist" aria-label="K 线周期">
-          <button class="tf-btn" data-tf="15m">15m</button>
-          <button class="tf-btn" data-tf="1h">1h</button>
-          <button class="tf-btn" data-tf="4h">4h</button>
-          <button class="tf-btn" data-tf="1d">1d</button>
+        <div class="chart-controls">
+          <div class="tf-group" id="tf-group" role="tablist" aria-label="K 线周期">
+            <button class="tf-btn" data-tf="15m">15m</button>
+            <button class="tf-btn" data-tf="1h">1h</button>
+            <button class="tf-btn" data-tf="4h">4h</button>
+            <button class="tf-btn" data-tf="1d">1d</button>
+          </div>
+          <button class="reset-btn" id="chart-reset" title="重置缩放与位置（双击：滚动到最新）" aria-label="重置缩放">↻</button>
         </div>
         <div class="chart-stats" id="chart-stats"></div>
       </div>
