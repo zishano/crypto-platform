@@ -116,6 +116,25 @@
     </section>
   </main>
 
+  <div class="modal-backdrop" id="info-modal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="info-name">
+      <button class="modal-close" id="info-close" aria-label="关闭">×</button>
+      <div class="modal-header">
+        <div class="info-logo-wrap">
+          <img class="info-logo" id="info-logo" alt="" hidden />
+        </div>
+        <div class="info-headline">
+          <h3 id="info-name">—</h3>
+          <p class="info-meta" id="info-meta">—</p>
+        </div>
+      </div>
+      <div class="modal-body" id="info-body">
+        <p class="info-loading">加载中…</p>
+      </div>
+      <p class="info-foot">数据来源：CoinGecko。仅供参考，非投资建议。</p>
+    </div>
+  </div>
+
   <script src="/app.js"></script>
 </body>
 </html>

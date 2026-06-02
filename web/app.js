@@ -40,6 +40,12 @@
     footerSync: document.getElementById("footer-sync"),
     footerRecords: document.getElementById("footer-records"),
     footerError: document.getElementById("footer-error"),
+    infoModal: document.getElementById("info-modal"),
+    infoClose: document.getElementById("info-close"),
+    infoLogo: document.getElementById("info-logo"),
+    infoName: document.getElementById("info-name"),
+    infoMeta: document.getElementById("info-meta"),
+    infoBody: document.getElementById("info-body"),
   };
 
   const state = {
@@ -280,7 +286,7 @@
           <button class="fav-btn ${isFav ? "is-fav" : ""}" aria-label="收藏">${isFav ? "★" : "☆"}</button>
         </span>
         <span class="col col-symbol">
-          <span class="symbol-name">${item.symbol}</span>
+          <span class="symbol-name" title="点击查看币种信息">${item.symbol}</span>
           ${tagChips}
         </span>
         <span class="col col-price">${fmtPrice(item.price)}</span>
@@ -294,6 +300,11 @@
       row.querySelector(".fav-btn").addEventListener("click", (e) => {
         e.stopPropagation();
         toggleFavorite(item.symbol);
+      });
+      row.querySelector(".symbol-name").addEventListener("click", (e) => {
+        e.stopPropagation();
+        const base = item.symbol.split("/")[0];
+        openInfoModal(base);
       });
       row.addEventListener("click", () => selectSymbol(item.symbol));
 
@@ -432,6 +443,144 @@
     }
   }
 
+  // -------------------- info modal --------------------
+
+  function escapeHtml(s) {
+    return String(s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function openInfoModal(base) {
+    el.infoModal.hidden = false;
+    el.infoLogo.hidden = true;
+    el.infoLogo.removeAttribute("src");
+    el.infoName.textContent = base;
+    el.infoMeta.textContent = "加载中…";
+    el.infoBody.innerHTML = `<p class="info-loading">加载中…</p>`;
+    void fetchInfoAndRender(base);
+  }
+
+  function closeInfoModal() {
+    el.infoModal.hidden = true;
+  }
+
+  async function fetchInfoAndRender(base) {
+    try {
+      const data = await getJSON(`/api/info/${encodeURIComponent(base)}`);
+      renderInfoModal(data);
+    } catch (err) {
+      el.infoBody.innerHTML =
+        `<p class="info-error">加载失败：${escapeHtml(err.message)}</p>` +
+        `<p class="info-hint">CoinGecko 可能被限速或网络故障。稍后重试。</p>`;
+    }
+  }
+
+  function buildLinkButton(url, label) {
+    if (!url) return "";
+    return `<a class="info-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
+  }
+
+  function renderInfoModal(d) {
+    if (!d || !d.found) {
+      el.infoName.textContent = d?.base || "—";
+      el.infoMeta.textContent = "—";
+      el.infoBody.innerHTML =
+        `<p class="info-error">${escapeHtml(d?.error || "没有找到该币种的信息。")}</p>` +
+        `<p class="info-hint">可能是非常新的币或 CoinGecko 暂未收录。Phase 2 上线买入前请独立尽职调查。</p>`;
+      return;
+    }
+
+    if (d.image) {
+      el.infoLogo.src = d.image;
+      el.infoLogo.hidden = false;
+    }
+    el.infoName.textContent = `${d.name} (${d.symbol})`;
+    el.infoMeta.textContent = [
+      d.market_cap_rank ? `市值排名 #${d.market_cap_rank}` : null,
+      d.genesis_date ? `创世 ${d.genesis_date}` : null,
+      d.country_origin || null,
+    ].filter(Boolean).join("  ·  ") || "—";
+
+    const desc = d.description_zh || d.description_en || "";
+    const isLong = desc.length > 320;
+
+    const facts = [];
+    if (d.genesis_date)       facts.push({ label: "创世日期",  value: d.genesis_date });
+    if (d.market_cap_rank)    facts.push({ label: "市值排名",  value: "#" + d.market_cap_rank });
+    if (d.hashing_algorithm)  facts.push({ label: "哈希算法",  value: d.hashing_algorithm });
+    if (d.country_origin)     facts.push({ label: "起源国家",  value: d.country_origin });
+
+    const linkBlocks = [];
+    (d.links?.homepage || []).forEach((u, i) =>
+      linkBlocks.push(buildLinkButton(u, i ? `官网 ${i + 1}` : "官网")));
+    linkBlocks.push(buildLinkButton(d.links?.whitepaper, "白皮书"));
+    (d.links?.github || []).slice(0, 2).forEach((u, i) =>
+      linkBlocks.push(buildLinkButton(u, i ? `GitHub ${i + 1}` : "GitHub")));
+    linkBlocks.push(buildLinkButton(d.links?.twitter, "Twitter"));
+    linkBlocks.push(buildLinkButton(d.links?.reddit, "Reddit"));
+    (d.links?.explorer || []).slice(0, 2).forEach((u, i) =>
+      linkBlocks.push(buildLinkButton(u, i ? `区块浏览器 ${i + 1}` : "区块浏览器")));
+    const linksHtml = linkBlocks.filter(Boolean).join("");
+
+    const categoriesHtml = (d.categories || []).slice(0, 8)
+      .map((c) => `<span class="info-category">${escapeHtml(c)}</span>`)
+      .join("");
+
+    el.infoBody.innerHTML = `
+      ${desc ? `
+        <div class="info-section">
+          <h4>项目简介</h4>
+          <div class="info-desc ${isLong ? "collapsed" : ""}" id="info-desc-text">${escapeHtml(desc)}</div>
+          ${isLong ? `<button class="info-toggle" id="info-desc-toggle">展开全文 ↓</button>` : ""}
+        </div>` : ""}
+
+      ${facts.length ? `
+        <div class="info-section">
+          <h4>关键信息</h4>
+          <div class="info-facts">
+            ${facts.map((f) => `
+              <div class="info-fact">
+                <div class="info-fact-label">${escapeHtml(f.label)}</div>
+                <div class="info-fact-value">${escapeHtml(f.value)}</div>
+              </div>
+            `).join("")}
+          </div>
+        </div>` : ""}
+
+      ${categoriesHtml ? `
+        <div class="info-section">
+          <h4>分类</h4>
+          <div class="info-categories">${categoriesHtml}</div>
+        </div>` : ""}
+
+      ${linksHtml ? `
+        <div class="info-section">
+          <h4>相关链接</h4>
+          <div class="info-links">${linksHtml}</div>
+        </div>` : ""}
+
+      <div class="info-section">
+        <h4>重大动态</h4>
+        <p class="info-hint">
+          CoinGecko 暂不提供逐条事件流。请通过<strong>官方网站</strong>、<strong>GitHub Releases</strong>、
+          <strong>Twitter 公告</strong>追踪具体进展。Phase 2 计划接入新闻 API（CryptoCompare / NewsAPI）。
+        </p>
+      </div>
+    `;
+
+    const toggle = document.getElementById("info-desc-toggle");
+    if (toggle) {
+      toggle.addEventListener("click", () => {
+        const txt = document.getElementById("info-desc-text");
+        const collapsed = txt.classList.toggle("collapsed");
+        toggle.textContent = collapsed ? "展开全文 ↓" : "收起 ↑";
+      });
+    }
+  }
+
   function setTimeframe(tf) {
     if (!ALLOWED_TIMEFRAMES.includes(tf)) return;
     if (state.timeframe === tf) return;
@@ -475,6 +624,15 @@
       resetBtn.addEventListener("click", resetChartView);
       resetBtn.addEventListener("dblclick", scrollChartToLatest);
     }
+
+    // 信息弹窗：X 按钮、点击 backdrop、ESC 键三种关闭方式
+    el.infoClose.addEventListener("click", closeInfoModal);
+    el.infoModal.addEventListener("click", (e) => {
+      if (e.target === el.infoModal) closeInfoModal();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !el.infoModal.hidden) closeInfoModal();
+    });
   }
 
   async function bootstrap() {

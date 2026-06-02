@@ -78,6 +78,8 @@ cp .env.example .env
 
 - **顶部主图**：K 线 + 全部 stats（最新价 / 今日 / 7d / 30d / 90d / 24h 高低 / 量）。
 - **K 线周期**：图表右上角按钮组 `15m / 1h / 4h / 1d`，默认 `1d`。切换会按需向交易所拉一次该周期的历史，之后由后端缓存到 SQLite。偏好存浏览器 `localStorage`。
+- **K 线视图保留**：自动刷新时**保留**你当前的缩放和平移；右上 `↻` 单击重置（全景），双击滚到最新。
+- **币种信息弹窗**：列表里任意一行点**交易对名**（带蓝色下划线提示），弹出 CoinGecko 背景资料：项目简介（含创立者/创立年份/创立原因，中文优先）、创世日期、市值排名、哈希算法、起源国家、分类标签、官网/白皮书/GitHub/Twitter/Reddit/区块浏览器链接。后端 30 分钟内存缓存。ESC、点空白处、X 按钮都能关。
 - **列表列**：★ / 交易对(+标签) / 最新价 / 今日 / 7 天 / 30 天 / 90 天 / 24h 量。
 - **币种标签**：
   - 市场类型：`现货 / 永续 / 合约 / 期权 / 杠杆`（CCXT market metadata）
@@ -170,6 +172,7 @@ crypto-platform/
 | 角色 | 选型 | 参考开源仓库 |
 |------|------|--------------|
 | 行情采集 | [CCXT](https://github.com/ccxt/ccxt) | 100+ 交易所统一封装，事实标准 |
+| 币种元数据 | [CoinGecko](https://www.coingecko.com/zh/api/documentation) Free Tier | 无 Key 公共 API，简介/链接/创世日期等 |
 | 后端 | [FastAPI](https://github.com/tiangolo/fastapi) + uvicorn | 异步、自带 OpenAPI |
 | 本地存储 | SQLite（标准库） | UNIQUE 约束做去重 |
 | K 线图 | [TradingView Lightweight Charts](https://github.com/tradingview/lightweight-charts) | 45KB，MIT，加密看板事实标准 |

@@ -12,10 +12,11 @@ from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from data import MarketDataError
+from data import MarketDataError, fetch_coin_info
 
 from .models import (
     CandleModel,
+    CoinInfoResponse,
     MetaResponse,
     PricePointModel,
     SnapshotItem,
@@ -182,6 +183,28 @@ def get_candles(
         )
         for r in rows
     ]
+
+
+@router.get("/info/{base}", response_model=CoinInfoResponse)
+def get_coin_info_route(base: str) -> CoinInfoResponse:
+    """
+    返回该币种的背景资料（来源：CoinGecko）。
+
+    仅 GET，无写入。CoinGecko 免费 tier，无凭证。
+    内部 30 分钟内存缓存，避免重复打 CoinGecko。
+    """
+    key = (base or "").upper().strip()
+    if not key or "/" in key:
+        raise HTTPException(status_code=400, detail="非法的 base 符号")
+
+    info = fetch_coin_info(key)
+    if info is None:
+        return CoinInfoResponse(
+            found=False,
+            base=key,
+            error="未找到该币种的元数据（CoinGecko 暂未收录或网络故障）。",
+        )
+    return CoinInfoResponse(found=True, base=key, **info)
 
 
 @router.get("/snapshot", response_model=SnapshotResponse)

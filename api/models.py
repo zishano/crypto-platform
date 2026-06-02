@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
 
@@ -61,3 +61,22 @@ class SnapshotResponse(BaseModel):
     last_sync_ms: Optional[int]
     last_error: Optional[str]
     running: bool
+
+
+class CoinInfoResponse(BaseModel):
+    found: bool
+    base: str
+    error: Optional[str] = None
+    # 以下字段在 found=False 时全部为空。
+    id: Optional[str] = None
+    symbol: Optional[str] = None
+    name: Optional[str] = None
+    image: Optional[str] = None
+    description_zh: str = ""
+    description_en: str = ""
+    genesis_date: Optional[str] = None
+    market_cap_rank: Optional[int] = None
+    categories: List[str] = []
+    country_origin: Optional[str] = None
+    hashing_algorithm: Optional[str] = None
+    links: Dict[str, Any] = {}
