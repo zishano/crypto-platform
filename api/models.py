@@ -44,9 +44,14 @@ class SnapshotItem(BaseModel):
     tags: List[str] = []            # 主流 / Meme / AI / L2 / DeFi / 新币 / 热门
     price: Optional[float]
     price_timestamp_ms: Optional[int]
+    # 24h 滚动涨跌（来自交易所 ticker：当前价 vs 24h 前那一刻）
     change_24h_abs: Optional[float]
     change_24h_pct: Optional[float]
-    change_7d_pct: Optional[float]  # 来自日 K 比较，下同
+    # 今日涨跌（自 UTC 00:00 开盘起算，来自日 K 第 0 根的 open）
+    change_today_abs: Optional[float] = None
+    change_today_pct: Optional[float] = None
+    # 来自日 K 比较，下同
+    change_7d_pct: Optional[float]
     change_30d_pct: Optional[float]
     change_90d_pct: Optional[float]
     high_24h: Optional[float]

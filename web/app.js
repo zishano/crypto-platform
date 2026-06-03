@@ -56,7 +56,7 @@
     selectedSymbol: null,
     favorites: loadFavorites(),
     tab: localStorage.getItem(TAB_KEY) === "favorites" ? "favorites" : "all",
-    sort: localStorage.getItem(SORT_KEY) || "change_24h_desc",
+    sort: localStorage.getItem(SORT_KEY) || "change_today_desc",
     timeframe: ALLOWED_TIMEFRAMES.includes(localStorage.getItem(TF_KEY))
       ? localStorage.getItem(TF_KEY)
       : DEFAULT_TIMEFRAME,
@@ -259,6 +259,8 @@
     };
 
     const SORTERS = {
+      change_today_desc: (a, b) => cmpNum(b.change_today_pct, a.change_today_pct),
+      change_today_asc:  (a, b) => cmpNum(a.change_today_pct, b.change_today_pct),
       change_24h_desc: (a, b) => cmpNum(b.change_24h_pct, a.change_24h_pct),
       change_24h_asc:  (a, b) => cmpNum(a.change_24h_pct, b.change_24h_pct),
       change_7d_desc:  (a, b) => cmpNum(b.change_7d_pct,  a.change_7d_pct),
@@ -315,7 +317,7 @@
           ${tagChips}
         </span>
         <span class="col col-price">${fmtPrice(item.price)}</span>
-        ${pctCell(item.change_24h_pct)}
+        ${pctCell(item.change_today_pct)}
         ${pctCell(item.change_7d_pct)}
         ${pctCell(item.change_30d_pct)}
         ${pctCell(item.change_90d_pct)}
@@ -394,14 +396,15 @@
       `${state.meta.exchange.toUpperCase()} · ${state.timeframe} K 线 · 更新于 ${fmtTime(item.price_timestamp_ms)}`;
 
     const stats = [
-      { label: "最新价",  value: fmtPrice(item.price) },
-      { label: "今日",   value: fmtPct(item.change_24h_pct), klass: dirOf(item.change_24h_pct) },
-      { label: "7 天",   value: fmtPct(item.change_7d_pct),  klass: dirOf(item.change_7d_pct) },
-      { label: "30 天",  value: fmtPct(item.change_30d_pct), klass: dirOf(item.change_30d_pct) },
-      { label: "90 天",  value: fmtPct(item.change_90d_pct), klass: dirOf(item.change_90d_pct) },
-      { label: "24h 高", value: fmtPrice(item.high_24h) },
-      { label: "24h 低", value: fmtPrice(item.low_24h) },
-      { label: "24h 量", value: fmtVolume(item.volume_24h) },
+      { label: "最新价",     value: fmtPrice(item.price) },
+      { label: "今日 (00:00)", value: fmtPct(item.change_today_pct), klass: dirOf(item.change_today_pct) },
+      { label: "24h 滚动",   value: fmtPct(item.change_24h_pct),   klass: dirOf(item.change_24h_pct) },
+      { label: "7 天",      value: fmtPct(item.change_7d_pct),    klass: dirOf(item.change_7d_pct) },
+      { label: "30 天",     value: fmtPct(item.change_30d_pct),   klass: dirOf(item.change_30d_pct) },
+      { label: "90 天",     value: fmtPct(item.change_90d_pct),   klass: dirOf(item.change_90d_pct) },
+      { label: "24h 高",    value: fmtPrice(item.high_24h) },
+      { label: "24h 低",    value: fmtPrice(item.low_24h) },
+      { label: "24h 量",    value: fmtVolume(item.volume_24h) },
     ];
     el.chartStats.innerHTML = stats
       .map((s) => `

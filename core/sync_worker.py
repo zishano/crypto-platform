@@ -28,6 +28,12 @@ WINDOW_TIMEFRAME = "1d"
 WINDOW_LIMIT = 100                 # 100 天日 K，覆盖 90d 窗口
 WINDOW_REFRESH_SECONDS = 3600      # 1 小时刷一次日 K（足够，日 K 一天只滚动一次）
 
+# 真正的 24h 滚动涨跌需要 1h K 线对比。
+# 25 根 = 当前小时 + 过去 24 小时；够算 hourly[24].open vs current_price。
+ROLLING_24H_TIMEFRAME = "1h"
+ROLLING_24H_LIMIT = 25
+ROLLING_24H_REFRESH_SECONDS = 1800  # 30 分钟刷一次足够
+
 
 @dataclass(frozen=True)
 class SyncState:
@@ -66,11 +72,15 @@ class SyncWorker(threading.Thread):
     # --- 主循环 ------------------------------------------------------------
 
     def run(self) -> None:
-        # 启动先拉一次窗口用日 K (供 7/30/90d 计算)；图表 K 线随后补。
+        # 启动一次性补齐三套 K 线：日 K (窗口涨跌) / 1h (真 24h 滚动) / 图表用。
+        # 图表周期撞库的话靠 UNIQUE 兜底，不会重复落地。
         self._sync_candles(self._cfg.symbols, WINDOW_TIMEFRAME, WINDOW_LIMIT)
-        self._sync_candles(self._cfg.symbols, self._cfg.kline_timeframe, self._cfg.kline_limit)
+        self._sync_candles(self._cfg.symbols, ROLLING_24H_TIMEFRAME, ROLLING_24H_LIMIT)
+        if self._cfg.kline_timeframe not in (WINDOW_TIMEFRAME, ROLLING_24H_TIMEFRAME):
+            self._sync_candles(self._cfg.symbols, self._cfg.kline_timeframe, self._cfg.kline_limit)
         last_chart_sync = time.monotonic()
         last_window_sync = time.monotonic()
+        last_24h_sync = time.monotonic()
 
         while not self._stop_event.is_set():
             self._sync_prices(self._cfg.symbols)
@@ -81,6 +91,9 @@ class SyncWorker(threading.Thread):
             if now - last_window_sync >= WINDOW_REFRESH_SECONDS:
                 self._sync_candles(self._cfg.symbols, WINDOW_TIMEFRAME, WINDOW_LIMIT)
                 last_window_sync = now
+            if now - last_24h_sync >= ROLLING_24H_REFRESH_SECONDS:
+                self._sync_candles(self._cfg.symbols, ROLLING_24H_TIMEFRAME, ROLLING_24H_LIMIT)
+                last_24h_sync = now
             self._stop_event.wait(self._cfg.sync_interval_seconds)
 
     def _sync_prices(self, symbols: Iterable[str]) -> None:

@@ -31,6 +31,10 @@ router = APIRouter(prefix="/api", tags=["market"])
 WINDOW_TIMEFRAME = "1d"
 WINDOW_DAYS = (7, 30, 90)
 
+# 1h K 线对比当前价 -> 真 24h 滚动涨跌
+# （部分交易所的 ticker.percentage 按 UTC 00:00 锚定，等同今日，不是真滚动）
+ROLLING_24H_TIMEFRAME = "1h"
+
 # 允许用户切换的图表周期（白名单，避免任意值打到交易所）。
 ALLOWED_CHART_TIMEFRAMES = ("15m", "1h", "4h", "1d")
 TIMEFRAME_SECONDS = {
@@ -101,6 +105,45 @@ def _window_change_pct(
     if anchor in (None, 0):
         return None
     return (current_price - anchor) / anchor * 100.0
+
+
+def _today_change(
+    daily_klines_desc: list[dict],
+    current_price: Optional[float],
+) -> tuple[Optional[float], Optional[float]]:
+    """
+    今日涨跌：自 UTC 00:00 起算。
+    用今日（仍在进行的）日 K 的 open 作为今日开盘价。
+    返回 (abs_change, pct_change)。
+    """
+    if current_price is None or not daily_klines_desc:
+        return None, None
+    today_open = daily_klines_desc[0].get("open")
+    if today_open in (None, 0):
+        return None, None
+    abs_change = current_price - today_open
+    pct_change = abs_change / today_open * 100.0
+    return abs_change, pct_change
+
+
+def _rolling_24h_change(
+    hourly_klines_desc: list[dict],
+    current_price: Optional[float],
+) -> tuple[Optional[float], Optional[float]]:
+    """
+    真 24h 滚动涨跌：当前价 vs 24 根 1h K 线前的开盘价（≈ 24 小时前）。
+    需要至少 25 根 1h K 线：[0] 当前小时，[24] 是 24h 前那一小时。
+    """
+    if current_price is None or not hourly_klines_desc:
+        return None, None
+    if len(hourly_klines_desc) < 25:
+        return None, None
+    anchor = hourly_klines_desc[24].get("open")
+    if anchor in (None, 0):
+        return None, None
+    abs_change = current_price - anchor
+    pct_change = abs_change / anchor * 100.0
+    return abs_change, pct_change
 
 
 def _is_stale(rows: list[dict], timeframe: str) -> bool:
@@ -225,6 +268,10 @@ def get_snapshot(request: Request) -> SnapshotResponse:
         current_price = row["price"] if row else None
 
         daily = storage.recent_candles(symbol, WINDOW_TIMEFRAME, limit=max(WINDOW_DAYS) + 1)
+        hourly = storage.recent_candles(symbol, ROLLING_24H_TIMEFRAME, limit=25)
+
+        change_today_abs, change_today_pct = _today_change(daily, current_price)
+        change_24h_abs, change_24h_pct = _rolling_24h_change(hourly, current_price)
         change_7d  = _window_change_pct(daily, 7,  current_price)
         change_30d = _window_change_pct(daily, 30, current_price)
         change_90d = _window_change_pct(daily, 90, current_price)
@@ -237,8 +284,13 @@ def get_snapshot(request: Request) -> SnapshotResponse:
                 tags=_compute_tags(symbol, has_long_history),
                 price=current_price,
                 price_timestamp_ms=row["timestamp_ms"] if row else None,
-                change_24h_abs=row["change_24h_abs"] if row else None,
-                change_24h_pct=row["change_24h_pct"] if row else None,
+                # 真 24h 滚动 (1h K 线对比); 拉不到时 fallback 到 ticker 数值
+                change_24h_abs=change_24h_abs if change_24h_abs is not None
+                    else (row["change_24h_abs"] if row else None),
+                change_24h_pct=change_24h_pct if change_24h_pct is not None
+                    else (row["change_24h_pct"] if row else None),
+                change_today_abs=change_today_abs,
+                change_today_pct=change_today_pct,
                 change_7d_pct=change_7d,
                 change_30d_pct=change_30d,
                 change_90d_pct=change_90d,

@@ -79,9 +79,13 @@
         <div class="sort-controls">
           <label for="sort">排序</label>
           <select id="sort">
-            <optgroup label="今日 (24h)">
-              <option value="change_24h_desc">今日涨幅 ↓</option>
-              <option value="change_24h_asc">今日跌幅 ↓</option>
+            <optgroup label="今日 (自 UTC 00:00)">
+              <option value="change_today_desc">今日涨幅 ↓</option>
+              <option value="change_today_asc">今日跌幅 ↓</option>
+            </optgroup>
+            <optgroup label="24h 滚动">
+              <option value="change_24h_desc">24h 涨幅 ↓</option>
+              <option value="change_24h_asc">24h 跌幅 ↓</option>
             </optgroup>
             <optgroup label="7 天">
               <option value="change_7d_desc">7 天涨幅 ↓</option>
@@ -110,7 +114,7 @@
         <span class="col col-fav"></span>
         <span class="col col-symbol">交易对</span>
         <span class="col col-price">最新价</span>
-        <span class="col col-change">今日</span>
+        <span class="col col-change" title="今日涨跌 = 当前价 vs 今日 UTC 00:00 开盘价">今日</span>
         <span class="col col-change">7 天</span>
         <span class="col col-change">30 天</span>
         <span class="col col-change">90 天</span>
