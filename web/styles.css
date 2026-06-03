@@ -255,7 +255,7 @@ main {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   padding: 0 18px 14px;
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
@@ -293,6 +293,68 @@ main {
   border-radius: 999px;
 }
 .tab[aria-selected="true"] .tab-badge { color: var(--text-mute); }
+
+.search-wrap {
+  position: relative;
+  flex: 1 1 240px;
+  max-width: 320px;
+  min-width: 160px;
+}
+
+.search-icon {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-dim);
+  font-size: 14px;
+  pointer-events: none;
+  line-height: 1;
+}
+
+.search-input {
+  width: 100%;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 30px 7px 30px;
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color var(--duration) var(--ease),
+              background var(--duration) var(--ease);
+}
+.search-input::placeholder { color: var(--text-dim); }
+.search-input:focus {
+  border-color: var(--accent);
+  background: oklch(22% 0.03 260);
+}
+/* 移除浏览器默认的 search input X 按钮，我们用自己的 */
+.search-input::-webkit-search-cancel-button { -webkit-appearance: none; }
+
+.search-clear {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  width: 22px;
+  height: 22px;
+  font-size: 14px;
+  border-radius: 4px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-family: inherit;
+}
+.search-clear:hover { color: var(--text); background: var(--bg-elev); }
+.search-clear[hidden] { display: none; }
 
 .sort-controls {
   display: flex;

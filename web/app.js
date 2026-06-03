@@ -46,6 +46,8 @@
     infoName: document.getElementById("info-name"),
     infoMeta: document.getElementById("info-meta"),
     infoBody: document.getElementById("info-body"),
+    searchInput: document.getElementById("search-input"),
+    searchClear: document.getElementById("search-clear"),
   };
 
   const state = {
@@ -58,6 +60,7 @@
     timeframe: ALLOWED_TIMEFRAMES.includes(localStorage.getItem(TF_KEY))
       ? localStorage.getItem(TF_KEY)
       : DEFAULT_TIMEFRAME,
+    searchQuery: "",
   };
 
   const MARKET_TYPE_LABEL = {
@@ -225,11 +228,28 @@
 
   // -------------------- list --------------------
 
+  function matchesSearch(item, query) {
+    if (!query) return true;
+    const q = query.toLowerCase();
+    const sym = item.symbol.toLowerCase();
+    const base = sym.split("/")[0];
+    if (sym.includes(q) || base.includes(q)) return true;
+    if ((item.market_type || "").toLowerCase().includes(q)) return true;
+    if (MARKET_TYPE_LABEL[item.market_type] &&
+        MARKET_TYPE_LABEL[item.market_type].includes(query)) return true;
+    if ((item.tags || []).some((t) => t.toLowerCase().includes(q))) return true;
+    return false;
+  }
+
   function visibleItems() {
     const items = state.snapshot?.items || [];
-    const filtered = state.tab === "favorites"
+    let filtered = state.tab === "favorites"
       ? items.filter((i) => state.favorites.has(i.symbol))
       : items.slice();
+
+    if (state.searchQuery) {
+      filtered = filtered.filter((i) => matchesSearch(i, state.searchQuery));
+    }
 
     const cmpNum = (a, b) => {
       if (a == null && b == null) return 0;
@@ -262,8 +282,13 @@
     el.list.innerHTML = "";
     el.listEmpty.hidden = items.length > 0;
     if (items.length === 0) {
-      el.listEmpty.textContent =
-        state.tab === "favorites" ? "还没有收藏。点列表中星标添加。" : "暂无数据。";
+      if (state.searchQuery) {
+        el.listEmpty.textContent = `无匹配「${state.searchQuery}」的币种。`;
+      } else if (state.tab === "favorites") {
+        el.listEmpty.textContent = "还没有收藏。点列表中星标添加。";
+      } else {
+        el.listEmpty.textContent = "暂无数据。";
+      }
       return;
     }
 
@@ -625,6 +650,8 @@
       resetBtn.addEventListener("dblclick", scrollChartToLatest);
     }
 
+    bindSearch();
+
     // 信息弹窗：X 按钮、点击 backdrop、ESC 键三种关闭方式
     el.infoClose.addEventListener("click", closeInfoModal);
     el.infoModal.addEventListener("click", (e) => {
@@ -632,6 +659,51 @@
     });
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && !el.infoModal.hidden) closeInfoModal();
+    });
+  }
+
+  function bindSearch() {
+    const apply = () => {
+      state.searchQuery = el.searchInput.value.trim();
+      el.searchClear.hidden = !state.searchQuery;
+      renderList();
+    };
+    el.searchInput.addEventListener("input", apply);
+    el.searchClear.addEventListener("click", () => {
+      el.searchInput.value = "";
+      state.searchQuery = "";
+      el.searchClear.hidden = true;
+      renderList();
+      el.searchInput.focus();
+    });
+
+    // 全局快捷键：
+    //  - "/"   聚焦搜索框（已在输入框 / 弹窗打开时不抢）
+    //  - Esc   在搜索框里：有内容先清空，没内容才失焦
+    document.addEventListener("keydown", (e) => {
+      const inEditable =
+        e.target.tagName === "INPUT" ||
+        e.target.tagName === "TEXTAREA" ||
+        e.target.isContentEditable;
+      const modalOpen = !el.infoModal.hidden;
+
+      if (e.key === "/" && !inEditable && !modalOpen) {
+        e.preventDefault();
+        el.searchInput.focus();
+        el.searchInput.select();
+        return;
+      }
+
+      if (e.key === "Escape" && document.activeElement === el.searchInput) {
+        if (state.searchQuery) {
+          el.searchInput.value = "";
+          state.searchQuery = "";
+          el.searchClear.hidden = true;
+          renderList();
+        } else {
+          el.searchInput.blur();
+        }
+      }
     });
   }
 
